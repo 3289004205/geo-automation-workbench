@@ -16,6 +16,13 @@ let active;
 const mime = { '.html':'text/html; charset=utf-8', '.css':'text/css', '.js':'text/javascript', '.png':'image/png', '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.webp':'image/webp', '.json':'application/json', '.csv':'text/csv; charset=utf-8', '.md':'text/plain; charset=utf-8', '.psd':'application/octet-stream' };
 const schema = { type:'object', additionalProperties:false, required:['status','message','questions','verified'], properties:{ status:{type:'string',enum:['completed','needs_input','incomplete']}, message:{type:'string'}, questions:{type:'array',items:{type:'string'}}, verified:{type:'boolean'} } };
 function fail(message, status=400) { throw Object.assign(new Error(message), {status}); }
+export function childEnvironment(env) {
+  const result={...env};
+  // Desktop session identifiers and private IPC endpoints belong to the parent,
+  // not a separately launched CLI job. Preserve user credentials and config.
+  for(const key of ['CODEX_APP_TOOLS_PIPE_PATH','CODEX_CI','CODEX_INTERNAL_ORIGINATOR_OVERRIDE','CODEX_MCP_NODE_PATH','CODEX_PERMISSION_PROFILE','CODEX_SESSION_ID','CODEX_THREAD_ID','CODEX_TASK_WORKSPACE_VERIFYING_IDENTITY','CODEX_WINDOWS_SANDBOX_PACKAGE_FAMILY'])delete result[key];
+  return result;
+}
 export async function executionRuntime(env=process.env) {
   const codexHome=path.resolve(env.CODEX_HOME||path.join(homedir(),'.codex'));
   const generatedImages=path.join(codexHome,'generated_images');
@@ -24,7 +31,7 @@ export async function executionRuntime(env=process.env) {
   const codexPython=path.join(homedir(),'.cache','codex-runtimes','codex-primary-runtime','dependencies','python',process.platform==='win32'?'python.exe':'bin/python3');
   const pythonCandidates=[env.CODEX_PYTHON,portablePython,codexPython].filter(Boolean);
   let python=null;for(const candidate of pythonCandidates){if(await fs.access(candidate).then(()=>true,()=>false)){python=candidate;break;}}
-  const runtimeEnv={...env,CODEX_HOME:codexHome};
+  const runtimeEnv={...childEnvironment(env),CODEX_HOME:codexHome};
   if(python){const key=Object.keys(runtimeEnv).find(key=>key.toLowerCase()==='path')||'PATH';runtimeEnv[key]=[path.dirname(python),path.join(path.dirname(python),'Scripts'),runtimeEnv[key]||''].join(path.delimiter);}
   return {generatedImages,python,env:runtimeEnv};
 }
@@ -60,6 +67,8 @@ export function validateInput(body) {
 }
 export async function findCli() {
   if (process.env.CODEX_BIN) return [process.env.CODEX_BIN,[]];
+  const localCli=path.join(root,'runtime','codex-cli','node_modules','@openai',process.platform==='win32'?'codex-win32-x64':'codex-linux-x64','vendor',process.platform==='win32'?'x86_64-pc-windows-msvc':'x86_64-unknown-linux-musl','bin',process.platform==='win32'?'codex.exe':'codex');
+  if(await fs.access(localCli).then(()=>true,()=>false))return [localCli,[]];
   const pathDirs=(process.env.PATH||process.env.Path||'').split(path.delimiter).filter(Boolean);
   for (const dir of pathDirs) {
     const exe=path.join(dir,process.platform==='win32'?'codex.exe':'codex');
@@ -84,6 +93,21 @@ export async function findCli() {
   fail('未找到 Codex CLI。安装后重新启动，或配置 CODEX_BIN 为可执行文件路径。',503);
 }
 const cliText = async args => { try{const [exe,prefix]=await findCli();return new Promise(resolve=>execFile(exe,[...prefix,...args],{windowsHide:true,timeout:8000},(error,out,err)=>resolve({ok:!error,text:(out||err).trim(),command:exe})));}catch(error){return {ok:false,text:error.message,command:''};} };
+export async function checkExecution(exe,prefix,cwd,runtime) {
+  // Run an actual file-read tool inside the same sandbox before invoking a model.
+  const required=['input.json','skill/SKILL.md','skill/references/qc-checklist.md'];
+  const library=path.join(root,'library','product-cutouts');
+  const code=`const fs=require('node:fs');for(const p of ${JSON.stringify(required)})fs.readFileSync(p);fs.readdirSync(${JSON.stringify(library)});console.log('INPUT_READ_OK');`;
+  if(process.platform!=='win32'){
+    for(const file of required)await fs.readFile(path.join(cwd,file));
+    await fs.readdir(library);return;
+  }
+  await new Promise((resolve,reject)=>execFile(exe,[...prefix,'sandbox','-P',':workspace','-C',cwd,process.execPath,'-e',code],{cwd,env:runtime.env,windowsHide:true,timeout:60000,maxBuffer:100000},(error,out,err)=>{
+    if(!error&&out.includes('INPUT_READ_OK'))return resolve();
+    const detail=String(err||out||error?.message||'未收到文件读取确认').slice(-2500);
+    reject(new Error('执行环境预检失败，未开始映射或图像处理。\n'+detail+'\n若出现 setup refresh had errors，请使用独立稳定版 Codex CLI（见 README），然后继续此任务。'));
+  }));
+}
 async function save(job) { await fs.writeFile(path.join(data,job.id,'job.json'),JSON.stringify(job,null,2)); }
 async function artifacts(job) {
   const dir=path.join(data,job.id,'output'); const result=[];
@@ -103,11 +127,14 @@ async function killChild(child) {
 async function run(job, instruction='', psd=false) {
   if (active) fail('已有任务正在运行，请等待完成。',409);
   const cwd=path.join(data,job.id);
-  active={job}; job.status='running'; job.report=null; job.questions=[]; job.logs=[];job.progress=createProgress(psd);updateProgress(job.progress,{stage:'prepare',state:'running',detail:'检查执行环境与输入文件'});
+  active={job}; job.status='running'; job.message='';job.report=null; job.questions=[]; job.logs=[];job.progress=createProgress(psd);updateProgress(job.progress,{stage:'prepare',state:'running',detail:'检查执行环境与输入文件'});
   try {
     await save(job);
     const [exe,prefix]=await findCli();
     const runtime=await executionRuntime();
+    await checkExecution(exe,prefix,cwd,runtime);
+    updateProgress(job.progress,{stage:'prepare',state:'completed',detail:'沙箱内 Node 已读取输入、Skill、质检清单及长期素材库'});
+    job.logs.push({time:new Date().toISOString(),text:'执行环境预检通过：输入、Skill、质检清单和长期素材库可读。'});
     const inputManifest=JSON.parse(await fs.readFile(path.join(cwd,'input.json'),'utf8'));
     const copyInstruction='以 input.json 的 copy 字段为文案真值。grid3 对应 03 三列双排跨缝标题，grid4 对应 04 四宫格卖点上移；对应模式须读取 layout-03-04-variants.md。';
     await fs.writeFile(path.join(cwd,'result-schema.json'),JSON.stringify(schema));
@@ -122,7 +149,6 @@ async function run(job, instruction='', psd=false) {
     await fs.writeFile(eventsFile,'');
     const child=spawn(exe,args,{cwd,env:runtime.env,windowsHide:true,shell:false,detached:process.platform!=='win32',stdio:['pipe','pipe','pipe']});
     active.child=child;
-    child.once('spawn',()=>updateProgress(job.progress,{stage:'prepare',state:'completed',detail:'执行环境就绪，已启动 Codex'}));
     let buffer='';
     let eventWrites=Promise.resolve();
     const log=line=>{readProgressMessage(job.progress,line);job.logs.push({time:new Date().toISOString(),text:line.slice(0,3000)});job.logs=job.logs.slice(-200);};

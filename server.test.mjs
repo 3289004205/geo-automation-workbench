@@ -1,8 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {validateInput,createServer,runtimeInstructions} from './server.mjs';
+import {validateInput,createServer,runtimeInstructions,childEnvironment} from './server.mjs';
 const png=Buffer.from([137,80,78,71,13,10,26,10]).toString('base64');
 const good=()=>({copy:'素材文件名：产品A.png\n商品名称：产品A',products:[{name:'产品A.png',base64:png}],references:[{name:'参考.png',base64:png}],width:1200,height:1600,layout:'reference',direction:'original',notes:''});
+test('child CLI does not inherit desktop IPC but preserves user configuration',()=>{const source={CODEX_APP_TOOLS_PIPE_PATH:'private-pipe',CODEX_THREAD_ID:'parent',CODEX_MCP_NODE_PATH:'desktop-node',CODEX_HOME:'user-home',CODEX_API_KEY:'test-key',PATH:'tools'};const clean=childEnvironment(source);assert.equal(clean.CODEX_APP_TOOLS_PIPE_PATH,undefined);assert.equal(clean.CODEX_THREAD_ID,undefined);assert.equal(clean.CODEX_MCP_NODE_PATH,undefined);assert.equal(clean.CODEX_HOME,'user-home');assert.equal(clean.CODEX_API_KEY,'test-key');assert.equal(clean.PATH,'tools');assert.equal(source.CODEX_THREAD_ID,'parent');});
 test('product direction and text source are protected',()=>{for(const layout of ['reference','tier','grid3','grid4'])assert.doesNotThrow(()=>validateInput({...good(),layout}));assert.throws(()=>validateInput({...good(),direction:'left'}));assert.throws(()=>validateInput({...good(),copyMode:'screenshots'}));assert.throws(()=>validateInput({...good(),copy:''}));});
 test('reject ambiguous filenames, traversal and dimensions',()=>{const v=good();v.products.push({...v.products[0],name:'产品A.PNG'});assert.throws(()=>validateInput(v));assert.throws(()=>validateInput({...good(),products:[{name:'../产品.png',base64:png}]}));assert.throws(()=>validateInput({...good(),width:1200.5}));});
 test('execution preserves latest skill and reusable library',()=>{const s=runtimeInstructions({generatedImages:'generated',python:null});assert.match(s,/长期素材库/);assert.match(s,/index.csv/);assert.match(s,/保持|保留原方向/);assert.doesNotMatch(s,/宽松|小米/);});

@@ -83,6 +83,15 @@ output/qc-report.md      质检记录
 
 服务自动发现系统 PATH、Codex 桌面客户端和 npm 安装的 CLI。凭证由本机 Codex 管理，不需要在网页中填写 API Key，也不要把凭证提交到 Git。
 
+如果任务出现 `helper_unknown_error: setup refresh had errors`，桌面版 `0.162.0-alpha.2` 在 Windows 上可能因正在使用的 Node 运行时文件无法更新 ACL 而初始化失败。可在项目目录安装经过验证的独立 CLI：
+
+```powershell
+npm install --prefix runtime/codex-cli --no-audit --no-fund @openai/codex@0.160.1
+npm start
+```
+
+工作台优先使用 `CODEX_BIN`，其次使用上述项目本地 CLI，再查找 PATH 和桌面版本。独立 CLI 继续使用本机登录和沙箱配置，不修改桌面配置。`runtime/` 不提交到仓库。每次任务启动前会在 Windows 沙箱内实际读取输入、Skill、质检清单及素材库；预检失败时立即停止，并在准备阶段显示错误。
+
 ## 验证与限制
 
 ```bash
