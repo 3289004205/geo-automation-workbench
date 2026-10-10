@@ -17,7 +17,7 @@ export function updateProgress(progress,event,now=new Date().toISOString()) {
 export function readProgressMessage(progress,message) {
   for(const line of String(message).split(/\r?\n/)){
     if(!line.startsWith('[PROGRESS] '))continue;
-    try{updateProgress(progress,JSON.parse(line.slice(11)));}catch{}
+    try{const event=JSON.parse(line.slice(11));if(event.stage==='delivery'&&event.state==='completed'){event.state='running';event.detail='产出已准备，等待最终交付校验';}updateProgress(progress,event);}catch{}
   }
 }
 export function finishProgress(progress,status,message,now=new Date().toISOString()) {
