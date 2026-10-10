@@ -45,3 +45,4 @@ $('mapping-check').onclick=()=>{
 $('library-open').onclick=async()=>{const panel=$('library-panel');panel.hidden=false;panel.scrollIntoView({behavior:'smooth'});try{const v=await api('/api/library');const box=$('library-content');box.replaceChildren();const p=document.createElement('p');p.textContent=v.count+' 张可复用透明 PNG';box.append(p);if(v.files.length){const ul=document.createElement('ul');for(const name of v.files){const li=document.createElement('li');li.textContent=name;ul.append(li);}box.append(ul);}else{const empty=document.createElement('p');empty.textContent='素材库还没有产品。首次任务通过质检后会自动归档。';box.append(empty);}if(v.index){const pre=document.createElement('pre');pre.textContent=v.index;box.append(pre);}}catch(e){$('library-content').textContent=e.message;}};
 $('library-close').onclick=()=>$('library-panel').hidden=true;
 
+if(new URLSearchParams(location.search).get('panel')==='library') void $('library-open').onclick();
