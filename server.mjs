@@ -36,7 +36,7 @@ export async function executionRuntime(env=process.env) {
   return {generatedImages,python,env:runtimeEnv};
 }
 export function runtimeInstructions(runtime) {
-  return `严格执行 skill 中的产品保真与透明边缘标准，保留原方向，只允许平移与等比缩放。必须先检查长期素材库 ${JSON.stringify(path.join(root,'library','product-cutouts'))}，唯一命中且通过 alpha、哈希及版本检查时直接复用。新素材验收后写入此库并维护 index.csv（匹配键、完整名称、PNG 文件名、来源版本、日期、校验状态、哈希），禁止覆盖不同规格和历史版本。该路径已授予读写权限。允许内置 image_gen 使用默认目录 ${JSON.stringify(runtime.generatedImages)}，只复制本次工具返回的文件到任务 output；先查看目标图片再编辑。工具实际不可用时如实报告，不伪造完成。${runtime.python?'可使用 Python '+runtime.python+' 执行文字排版与真实 alpha 校验。':''} 场景须使用受保护产品联合生成并通过物理落地校验，文字逐字来自用户文案。`;
+  return `执行 skill 中的产品保真标准，保留原方向，只允许平移与等比缩放。抠图精度遵循用户最新明确要求，优先于 Skill 的默认细节门槛。默认以正常展示可用为准：输入已有真实 alpha、产品完整且没有大片场景背景时可直接复用；少量白边或细小残留不应阻断后续排版，不要求逐像素精修，不必为了清理小白边重绘产品或安装分割工具。用户明确要求精细抠图时再执行严格边缘验收。产品结构、Logo、颜色和真实透明背景仍须保留。必须先检查长期素材库 ${JSON.stringify(path.join(root,'library','product-cutouts'))}，唯一命中且通过 alpha、哈希及版本检查时直接复用。新素材验收后写入此库并维护 index.csv（匹配键、完整名称、PNG 文件名、来源版本、日期、校验状态、哈希），禁止覆盖不同规格和历史版本。按普通展示标准验收的素材应在索引和质检报告中如实注明，不能冒充精修。该路径已授予读写权限。允许内置 image_gen 使用默认目录 ${JSON.stringify(runtime.generatedImages)}，只复制本次工具返回的文件到任务 output；先查看目标图片再编辑。工具实际不可用时如实报告，不伪造完成。${runtime.python?'可使用 Python '+runtime.python+' 执行文字排版与真实 alpha 校验。':''} 场景须使用受保护产品联合生成并通过物理落地校验，文字逐字来自用户文案。`;
 }
 export function validateInput(body) {
   if (!body) fail('请提供产品文案。');
