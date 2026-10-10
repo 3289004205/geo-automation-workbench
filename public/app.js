@@ -31,22 +31,10 @@ async function continueJob(action){const button=$(action);button.disabled=true;t
 $('continue').onclick=()=>continueJob('continue');$('psd').onclick=()=>continueJob('psd');
 const saved=localStorage.getItem('geo-studio-job');if(saved){try{await watch(saved);}catch{localStorage.removeItem('geo-studio-job');}}
 
-const normalize=s=>s.trim().replace(/\.(png|jpe?g|webp)$/i,'').replace(/[_\-\s]+/g,' ').toLowerCase();
-const csv=v=>'"'+String(v??'').replaceAll('"','""')+'"';
-let mapping=[];
-$('mapping-check').onclick=()=>{
-  const records=$('copy').value.split(/\n\s*\n/).filter(s=>s.trim()).map(block=>{const r={raw:block};for(const line of block.split('\n')){const m=line.match(/^([^：:]+)[：:](.*)$/);if(!m)continue;const k=m[1].trim(),v=m[2].trim();if(/文件名|SKU|编号/i.test(k))r.key=v;if(/商品名称|产品名称/.test(k))r.name=v;if(/价格/.test(k))r.price=v;}return r;});
-  const keyCounts=new Map();for(const r of records)keyCounts.set(normalize(r.key||''),(keyCounts.get(normalize(r.key||''))||0)+1);
-  mapping=selected.products.map(f=>{const rs=records.filter(r=>r.key&&normalize(r.key)===normalize(f.name));const r=rs.length===1?rs[0]:null;return {file:f.name,key:normalize(f.name),name:r?.name||'',price:r?.price||'',raw:r?.raw||'',status:rs.length>1?'重复匹配':!r?'未匹配':!r.name?'缺少商品名称':'唯一匹配'};});
-  const box=$('mapping-preview');box.replaceChildren();if(!mapping.length){box.textContent='请先上传产品素材。';return;}
-  const summary=document.createElement('p');summary.textContent=selected.products.length+' 件产品 · '+records.length+' 条文案 · '+mapping.filter(r=>r.status==='唯一匹配').length+' 项唯一匹配';box.append(summary);
-  const table=document.createElement('table');const head=document.createElement('tr');for(const t of ['素材文件名','商品名称','价格原文','状态']){const th=document.createElement('th');th.textContent=t;head.append(th);}table.append(head);for(const r of mapping){const tr=document.createElement('tr');for(const t of [r.file,r.name||'—',r.price||'—',r.status]){const td=document.createElement('td');td.textContent=t;tr.append(td);}table.append(tr);}box.append(table);
-  const unused=records.filter(r=>!selected.products.some(f=>normalize(f.name)===normalize(r.key||'')));if(unused.length){const p=document.createElement('p');p.textContent=unused.length+' 条文案未对应素材，请检查文件名 / SKU。';box.append(p);}
-  const btn=document.createElement('button');btn.type='button';btn.textContent='下载映射预检 CSV ↓';btn.onclick=()=>{const rows=[['原文件名','归一化匹配键','商品名称','价格原文','状态','原始文案','输出文件名'],...mapping.map(r=>[r.file,r.key,r.name,r.price,r.status,r.raw,r.file.replace(/\.[^.]+$/,'.png')])];const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(row=>row.map(csv).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='mapping-preflight.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};box.append(btn);
-};
 $('library-open').onclick=async()=>{const panel=$('library-panel');panel.hidden=false;panel.scrollIntoView({behavior:'smooth'});try{const v=await api('/api/library');const box=$('library-content');box.replaceChildren();const p=document.createElement('p');p.textContent=v.count+' 张可复用透明 PNG';box.append(p);if(v.files.length){const ul=document.createElement('ul');for(const name of v.files){const li=document.createElement('li');li.textContent=name;ul.append(li);}box.append(ul);}else{const empty=document.createElement('p');empty.textContent='素材库还没有产品。首次任务通过质检后会自动归档。';box.append(empty);}if(v.index){const pre=document.createElement('pre');pre.textContent=v.index;box.append(pre);}}catch(e){$('library-content').textContent=e.message;}};
 $('library-close').onclick=()=>$('library-panel').hidden=true;
 
 if(new URLSearchParams(location.search).get('panel')==='library') void $('library-open').onclick();
 
 if(!jobId){renderProgress({progress:createProgress(),status:'idle'});$('cancel').hidden=true;$('psd').hidden=true;$('continue-area').hidden=true;}
+
