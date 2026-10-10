@@ -222,7 +222,7 @@ export async function createServer(){
       if(['continue','psd'].includes(action)&&req.method==='POST'){if(active)fail('请等待当前任务完成。',409);const input=await body(req);if(action==='psd'&&(!job.finalCompleted||input.confirmed!==true))fail('请先完成并确认最终成品。');if(typeof input.text!=='string'||input.text.length>60000)fail('补充输入无效。');if(action==='psd')void run(job,input.text,true).catch(async error=>{job.status='incomplete';job.message=error.message;await save(job);});else void run(job,input.text,false).catch(async error=>{job.status='incomplete';job.message=error.message;await save(job);});return json(res,202,{id:job.id});}
       fail('操作不存在。',404);
     }
-    if(req.method==='GET'&&['/','/style.css','/refinement.css','/app.js','/progress.js','/merach-mark.png','/history.html','/history.js','/task.html','/task.js','/archive.css'].includes(url.pathname))return await sendFile(res,path.join(root,'public'),url.pathname==='/'?'index.html':url.pathname.slice(1));
+    if(req.method==='GET'&&['/','/style.css','/refinement.css','/app.js','/progress.js','/image-gallery.js','/image-gallery.css','/merach-mark.png','/history.html','/history.js','/task.html','/task.js','/archive.css'].includes(url.pathname))return await sendFile(res,path.join(root,'public'),url.pathname==='/'?'index.html':url.pathname.slice(1));
     fail('页面不存在。',404);
   }catch(error){json(res,error.status||500,{error:error.code==='ENOENT'?'文件不存在。':error.message});}});
 }
