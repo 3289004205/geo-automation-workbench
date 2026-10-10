@@ -1,0 +1,16 @@
+{
+  "name": "geo-automation-workbench",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "本地 Codex 产品抠图、文案映射与场景化产品卡工作台",
+  "repository": "github:3289004205/geo-automation-workbench"
+}

@@ -1,0 +1,11 @@
+data/
+library/
+node_modules/
+skill/assets/product-cutouts/*
+!skill/assets/product-cutouts/.gitkeep
+.env
+.env.*
+!.env.example
+*.log
+coverage/
+release/
