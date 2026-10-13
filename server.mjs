@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {validatePngDelivery,recoverCompletedPngJob} from './delivery.mjs';
 import {threadFromEvents,beginRun,continuationPrompt,executionArgs} from './continuation.mjs';
 import {createProgress,updateProgress,readProgressMessage,finishProgress} from './public/progress.js';
 import { promises as fs } from 'node:fs';
@@ -174,15 +175,7 @@ async function run(job, instruction='', psd=false) {
         job.status=['completed','needs_input','incomplete'].includes(report.status)?report.status:'incomplete';
         const files=await artifacts(job);
         const manifest=JSON.parse(await fs.readFile(path.join(cwd,'input.json'),'utf8'));
-        let cutoutsValid=true;
-        if(!psd) for(const product of manifest.products){
-          const name='product-cutouts/'+product.name.replace(/\.[^.]+$/,'.png');
-          if(!files.some(f=>f.name===name)){cutoutsValid=false;continue;}
-          const png=await fs.readFile(path.join(cwd,'output',name));
-          // A transparency-capable PNG is necessary; actual pixel/edge checks are in qc-report.md.
-          if(png.length<33||!png.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))||!([4,6].includes(png[25])||png.includes(Buffer.from('tRNS'))))cutoutsValid=false;
-        }
-        const required=psd?files.some(f=>f.name.endsWith('.psd')):cutoutsValid&&files.some(f=>f.name.startsWith('final-cards/')&&f.name.endsWith('.png'))&&files.some(f=>f.name==='mapping.csv')&&files.some(f=>f.name==='qc-report.md');
+        const required=psd?files.some(f=>f.name.endsWith('.psd')):await validatePngDelivery(cwd,manifest,files);
         if(job.status==='completed'&&(!report.verified||!required)){job.status='incomplete';job.message+='\n输出或质检证明不完整，请检查结果。';}
         if(psd && job.status==='completed') job.psdCompleted=true;
         if(!psd && job.status==='completed') job.finalCompleted=true;
@@ -196,7 +189,7 @@ async function sendFile(res,base,relative,download=false){const full=path.resolv
 export async function createServer(){
   await fs.mkdir(data,{recursive:true});
   await fs.mkdir(path.join(root,'library','product-cutouts'),{recursive:true});
-  for(const id of await fs.readdir(data)){try{const job=JSON.parse(await fs.readFile(path.join(data,id,'job.json'),'utf8'));if(job.status==='running'){job.status='incomplete';job.message='服务重启，任务已中断。';await save(job);}jobs.set(id,job);}catch{}}
+  for(const id of await fs.readdir(data)){try{const job=JSON.parse(await fs.readFile(path.join(data,id,'job.json'),'utf8'));if(job.status==='running'){job.status='incomplete';job.message='服务重启，任务已中断。';await save(job);}if(await recoverCompletedPngJob(job,path.join(data,id),await artifacts(job))){if(job.status==='completed')finishProgress(job.progress,'completed',job.message);await save(job);}jobs.set(id,job);}catch{}}
   return http.createServer(async(req,res)=>{try{
     const url=new URL(req.url,'http://localhost');
     const host=req.headers.host||'';
